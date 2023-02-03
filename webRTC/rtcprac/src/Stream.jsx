@@ -8,7 +8,6 @@ const Stream = () => {
   const video_ref = useRef();
   const [audio, setAudio] = useState(false);
   const [video, setVideo] = useState(true);
-  const join = false;
 
   const data = {
     roomId: uuidv4(),
@@ -48,30 +47,41 @@ const Stream = () => {
 
   const onClickSoundBtn = async () => {
     setAudio(!audio);
-    await addDoc(collection(db, "meetting-test"), data);
+    await addDoc(collection(db, "meettingtest"), data);
   };
 
   const onClickVideoBtn = async () => {
     setVideo(!video);
-    await addDoc(collection(db, "meetting-test"), data);
+    await addDoc(collection(db, "meettingtest"), data);
   };
 
   const onClickJoinBtn = async () => {
+    let join = false;
     //useParams로 받아온 아이디
     let id = null;
-    const dataList = await getDocs(collection(db, "meetting"));
+    const dataList = await getDocs(collection(db, "meettingtest"));
     dataList.forEach((data) => {
-      data.roomId === id ? (join = true) : (join = false);
+      data.data().roomId === id ? (join = true) : (join = false);
     });
-    //
     //join ? navigate(`/meet/${id}`) : alert("입장하려는 방이 없습니다.")
   };
 
+  //화면공유
+  const onClickScreenBtn = async () => {
+    let captureStream;
+    try {
+      captureStream = await navigator.mediaDevices.getDisplayMedia();
+    } catch (err) {
+      console.log(err);
+    }
+    return captureStream;
+  };
   return (
     <div>
       <video controls ref={video_ref}></video>
       <button onClick={onClickSoundBtn}>sound</button>
       <button onClick={onClickVideoBtn}>camera</button>
+      <button onClick={onClickScreenBtn}>screen</button>
       <button onClick={onClickJoinBtn}>join</button>
     </div>
   );
