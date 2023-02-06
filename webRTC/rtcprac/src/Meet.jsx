@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { useRef } from "react";
 import { servers } from "./server/firebase";
 import { db } from "./server/firebase";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc } from "firebase/firestore";
 import { useState } from "react";
 
 const Meet = () => {
@@ -82,7 +82,6 @@ const Meet = () => {
   }
 
   async function getLocalStream() {
-    console.log(audio, video);
     localStream = await navigator.mediaDevices.getUserMedia({
       video,
       audio,
@@ -99,7 +98,9 @@ const Meet = () => {
 
   async function getRemoteStream() {
     remoteStream = new MediaStream();
+
     yourVideo_ref.current.srcObject = remoteStream;
+
     myVideo_ref.current.onloadedmetadata = () => {
       myVideo_ref.current.play();
     };
@@ -110,51 +111,60 @@ const Meet = () => {
     };
   }
 
-  // const addPeople = async () => {
-  //   //const callId = callInput.value;
-  //   const callId = "dddd";
-  //   // getting the data for this particular call
-  //   const callDoc = db.collection("meettingtest").doc(callId);
+  const addPeople = async () => {
+    //const callId = callInput.value;
+    const callId = "dddd";
+    // getting the data for this particular call
+    //const callDoc = db.collection("meettingtest").doc(callId);
 
-  //   const answerCandidates = callDoc.collection("answerCandidates");
-  //   const offerCandidates = callDoc.collection("offerCandidates");
+    const callDoc = collection(db, "meettingtest");
 
-  //   // here we listen to the changes and add it to the answerCandidates
-  //   pc.onicecandidate = (event) => {
-  //     event.candidate && answerCandidates.add(event.candidate.toJSON());
-  //   };
+    const answerCandidates = doc(db, "meettingtest", "answerCandidates");
+    const offerCandidates = doc(db, "meettingtest", "offerCandidates");
 
-  //   const callData = (await callDoc.get()).data();
+    //const answerCandidates = callDoc.collection("answerCandidates");
+    // const offerCandidates = callDoc.collection("offerCandidates");
 
-  //   // setting the remote video with offerDescription
-  //   const offerDescription = callData.offer;
-  //   await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
+    // here we listen to the changes and add it to the answerCandidates
+    pc.onicecandidate = (event) => {
+      event.candidate && answerCandidates.add(event.candidate.toJSON());
+    };
 
-  //   // setting the local video as the answer
-  //   const answerDescription = await pc.createAnswer();
-  //   await pc.setLocalDescription(new RTCSessionDescription(answerDescription));
+    // const callData = (await callDoc.get()).data();
+    const callDataList = await getDoc(callDoc);
+    console.log(callDataList);
+    const callData = callDataList.data();
 
-  //   // answer config
-  //   const answer = {
-  //     type: answerDescription.type,
-  //     sdp: answerDescription.sdp,
-  //   };
+    // setting the remote video with offerDescription
+    const offerDescription = callData.offer;
+    console.log(offerDescription);
+    await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
 
-  //   await callDoc.update({ answer });
+    // setting the local video as the answer
+    const answerDescription = await pc.createAnswer();
+    await pc.setLocalDescription(new RTCSessionDescription(answerDescription));
 
-  //   offerCandidates.onSnapshot((snapshot) => {
-  //     snapshot.docChanges().forEach((change) => {
-  //       if (change.type === "added") {
-  //         let data = change.doc.data();
-  //         pc.addIceCandidate(new RTCIceCandidate(data));
-  //       }
-  //     });
-  //   });
-  // };
+    // answer config
+    const answer = {
+      type: answerDescription.type,
+      sdp: answerDescription.sdp,
+    };
+
+    await callDoc.update({ answer });
+
+    offerCandidates.onSnapshot((snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+          let data = change.doc.data();
+          pc.addIceCandidate(new RTCIceCandidate(data));
+        }
+      });
+    });
+  };
 
   useEffect(() => {
     getVideo();
-    //saddPeople();
+    addPeople();
   }, []);
 
   return (
