@@ -4,6 +4,8 @@ import { useRef } from "react";
 import { db, pc } from "./server/firebase";
 import { collection, getDocs, doc, getDoc } from "firebase/firestore";
 import { useState } from "react";
+import { push, ref } from "firebase/database";
+import { database } from "./server/firebase";
 
 const Meet = () => {
   const myVideo_ref = useRef();
@@ -11,6 +13,8 @@ const Meet = () => {
   const call_ref = useRef();
   const [audio, setAudio] = useState(false);
   const [video, setVideo] = useState({ width: 300, height: 300 });
+  const roomId = "237747";
+  const locate = ref(database, "meettest");
 
   let localStream = null;
   let remoteStream = null;
@@ -26,51 +30,6 @@ const Meet = () => {
 
     getRemoteStream(event);
   };
-
-  // function getFirebase(data) {
-  //   setAudio(data.audio);
-  //   setVideo(data.video);
-  // }
-
-  // async function onClickEndBtn() {
-  //   // referencing firebase collections
-  //   const callDoc = db.collection("calls").doc();
-  //   const offerCandidates = callDoc.collection("offerCandidates");
-  //   const answerCandidiates = callDoc.collection("answerCandidates");
-  //   // setting the input value to the calldoc id
-  //   call_ref.current.value = callDoc.id;
-  //   // get candidiates for caller and save to db
-  //   pc.onicecandidate = (event) => {
-  //     event.candidate && offerCandidates.add(event.candidate.toJSON());
-  //   };
-  //   // create offer
-  //   const offerDescription = await pc.createOffer();
-  //   await pc.setLocalDescription(offerDescription);
-  //   // config for offer
-  //   const offer = {
-  //     sdp: offerDescription.sdp,
-  //     type: offerDescription.type,
-  //   };
-  //   await callDoc.set({ offer });
-  //   // listening to changes in firestore and update the streams accordingly
-  //   callDoc.onSnapshot((snapshot) => {
-  //     const data = snapshot.data();
-  //     if (!pc.currentRemoteDescription && data.answer) {
-  //       const answerDescription = new RTCSessionDescription(data.answer);
-  //       pc.setRemoteDescription(answerDescription);
-  //     }
-  //     // if answered add candidates to peer connection
-  //     answerCandidiates.onSnapshot((snapshot) => {
-  //       snapshot.docChanges().forEach((change) => {
-  //         if (change.type === "added") {
-  //           const candidate = new RTCIceCandidate(change.doc.data());
-  //           pc.addIceCandidate(candidate);
-  //         }
-  //       });
-  //     });
-  //   });
-  //   // hangupButton.disabled = false;
-  // }
 
   async function getDataList(id) {
     const dataList = await getDocs(collection(db, "video"));
@@ -90,9 +49,27 @@ const Meet = () => {
       myVideo_ref.current.play();
     };
 
+    pc.createOffer()
+      .then((offer) => pc.setLocalDescription(offer))
+      .then(() =>
+        sendSignalingMessage({
+          type: "video-offer",
+          sdp: pc.localDescription,
+        })
+      )
+      .then((msg) => handleOffer({ sdp: pc.localDescription }))
+      .catch((err) => {
+        console.log(err);
+      });
+
     localStream.getTracks().forEach((track) => {
       pc.addTrack(track, localStream);
     });
+  }
+
+  function sendSignalingMessage(msg) {
+    const msgJSON = JSON.stringify(msg);
+    push(locate, msgJSON);
   }
 
   async function getRemoteStream(e) {
@@ -111,60 +88,40 @@ const Meet = () => {
     };
   }
 
-  const addPeople = async () => {
-    //const callId = callInput.value;
-    const callId = "dddd";
-    // getting the data for this particular call
-    //const callDoc = db.collection("meettingtest").doc(callId);
-
-    const callDoc = doc(db, "video", "msrh8VNsHJypDkS8boU2");
-
-    const answerCandidatesRef = doc(db, "video", "answerCandidates");
-    const offerCandidatesRef = doc(db, "video", "offerCandidates");
-
-    const answerCandidates = await getDoc(answerCandidatesRef);
-    const offerCandidates = await getDoc(offerCandidatesRef);
-    //const answerCandidates = callDoc.collection("answerCandidates");
-    // const offerCandidates = callDoc.collection("offerCandidates");
-
-    // here we listen to the changes and add it to the answerCandidates
-    pc.onicecandidate = (event) => {
-      event.candidate && answerCandidates.add(event.candidate.toJSON());
-    };
-
-    // const callData = (await callDoc.get()).data();
-    const callDataList = await getDoc(callDoc);
-    const callData = callDataList.data();
-    // setting the remote video with offerDescription
-    // const offerDescription = callData.offer;
-    const offerDescription = callData;
-    await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
-
-    // setting the local video as the answer
-    const answerDescription = await pc.createAnswer();
-    await pc.setLocalDescription(new RTCSessionDescription(answerDescription));
-
-    // answer config
-    const answer = {
-      type: answerDescription.type,
-      sdp: answerDescription.sdp,
-    };
-
-    await callDoc.update({ answer });
-
-    offerCandidates.onSnapshot((snapshot) => {
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === "added") {
-          let data = change.doc.data();
-          pc.addIceCandidate(new RTCIceCandidate(data));
-        }
+  function getAnswer() {
+    pc.createAnswer()
+      .then((answer) => pc.setLocalDescription(answer))
+      .then(() => {
+        sendSignalingMessage({
+          type: "video-answer",
+          sdp: pc.remoteDescription,
+        });
       });
-    });
-  };
+  }
+  function handleOffer(msg) {
+    const desc = new RTCSessionDescription(msg.sdp);
+    pc.setRemoteDescription(desc)
+      .then(() => navigator.mediaDevices.getUserMedia({ audio, video }))
+      .then((stream) => {
+        myVideo_ref.current.srcObject = stream;
+        return pc.addStream(stream);
+      })
+      .then(() => pc.createAnswer())
+      .then((answer) => pc.setLocalDescription(answer))
+      .then(() => {
+        sendSignalingMessage({
+          type: "video-remoteDescription",
+          sdp: pc.remoteDescription,
+        });
+      })
+      .catch((err) => console.log(err));
+  }
 
   useEffect(() => {
     getVideo();
-    addPeople();
+    getAnswer();
+    //handleOffer();
+    //addPeople();
   }, []);
 
   return (

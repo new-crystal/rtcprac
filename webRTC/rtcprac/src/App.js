@@ -5,8 +5,8 @@ import Stream from "./Stream";
 function App() {
   return (
     <div className="App">
-      <Stream />
-      {/* <Meet /> */}
+      {/* <Stream /> */}
+      <Meet />
     </div>
   );
 }
