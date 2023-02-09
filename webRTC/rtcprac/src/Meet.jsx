@@ -22,28 +22,20 @@ const Meet = () => {
 
   let localStream = null;
   let remoteStream = null;
+
   async function handleNegotiationNeededEvent() {
     try {
       const offer = await pc.createOffer();
-
-      // If the connection hasn't yet achieved the "stable" state,
-      // return to the caller. Another negotiationneeded event
-      // will be fired when the state stabilizes.
-
       if (pc.signalingState !== "stable") {
         return;
       }
-
-      // Establish the offer as the local peer's current
-      // description.
-
       await pc.setLocalDescription(offer);
 
       // Send the offer to the remote peer.
       sendSignalingMessage({
         name: "susu",
         target: "0gun",
-        type: "video-offer",
+        type: "offer",
         sdp: pc.localDescription,
       });
     } catch (err) {
@@ -55,20 +47,9 @@ const Meet = () => {
     yourVideo_ref.current.srcObject = event.streams[0];
   }
 
-  function handleICECandidateEvent(event) {
-    if (event.candidate) {
-      sendSignalingMessage({
-        type: "new-ice-candidate",
-        target: "0gun",
-        candidate: event.candidate,
-      });
-    }
-  }
-
   const getVideo = async (event) => {
     //roomid
     let id = "b71cd8";
-    let data = null;
 
     getDataList(id);
 
@@ -101,7 +82,7 @@ const Meet = () => {
         sendSignalingMessage({
           name: "susu",
           target: "0gun",
-          type: "video-offer",
+          type: "offer",
           sdp: pc.localDescription,
         })
       )
@@ -136,16 +117,6 @@ const Meet = () => {
     };
   }
 
-  function getAnswer() {
-    pc.createAnswer()
-      .then((answer) => pc.setLocalDescription(answer))
-      .then(() => {
-        sendSignalingMessage({
-          type: "video-answer",
-          sdp: pc.remoteDescription,
-        });
-      });
-  }
   function handleOffer(msg) {
     const desc = new RTCSessionDescription(msg.sdp);
     pc.setRemoteDescription(desc)
@@ -153,8 +124,6 @@ const Meet = () => {
       .then((stream) => {
         localStream = stream;
         myVideo_ref.current.srcObject = localStream;
-
-        //pc.addStream(stream);
 
         localStream
           .getTracks()
@@ -183,15 +152,22 @@ const Meet = () => {
   }
   useEffect(() => {
     getVideo();
-    getAnswer();
   }, []);
 
   return (
     <div>
       {/* <button onClick={(event) => getVideo(event)}>start!</button> */}
       <input ref={call_ref} />
-      <video ref={myVideo_ref}></video>
-      <video ref={yourVideo_ref}></video>
+      <video
+        autoPlay
+        style={{ width: "300px", height: "300px", backgroundColor: "lavender" }}
+        ref={myVideo_ref}
+      ></video>
+      <video
+        autoPlay
+        style={{ width: "300px", height: "300px", backgroundColor: "lavender" }}
+        ref={yourVideo_ref}
+      ></video>
       {/* <button onClick={onClickEndBtn}>종료</button> */}
     </div>
   );
