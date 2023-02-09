@@ -28,3 +28,5 @@ export const servers = {
   ],
   iceCandidatePoolSize: 10,
 };
+
+export const pc = new RTCPeerConnection(servers);

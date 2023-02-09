@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { addDoc, collection, getDocs } from "firebase/firestore";
 import { useRef } from "react";
-import { db } from "./server/firebase";
+import { db, pc } from "./server/firebase";
 import { async, uuidv4 } from "@firebase/util";
 
 const Stream = () => {
   const video_ref = useRef();
+  const screen_ref = useRef();
   const [audio, setAudio] = useState(false);
   const [video, setVideo] = useState(true);
 
@@ -74,10 +75,15 @@ const Stream = () => {
     } catch (err) {
       console.log(err);
     }
-    return captureStream;
+    return (screen_ref.current.srcObject = captureStream);
   };
   return (
     <div>
+      <video
+        style={{ width: "300px", height: "300px", backgroundColor: "lavender" }}
+        ref={screen_ref}
+        autoPlay
+      ></video>
       <video controls ref={video_ref}></video>
       <button onClick={onClickSoundBtn}>sound</button>
       <button onClick={onClickVideoBtn}>camera</button>

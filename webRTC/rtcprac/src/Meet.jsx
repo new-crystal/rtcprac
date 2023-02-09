@@ -1,8 +1,7 @@
 import { async } from "@firebase/util";
 import { useEffect } from "react";
 import { useRef } from "react";
-import { servers } from "./server/firebase";
-import { db } from "./server/firebase";
+import { db, pc } from "./server/firebase";
 import { collection, getDocs, doc, getDoc } from "firebase/firestore";
 import { useState } from "react";
 
@@ -10,23 +9,22 @@ const Meet = () => {
   const myVideo_ref = useRef();
   const yourVideo_ref = useRef();
   const call_ref = useRef();
-  const [audio, setAudio] = useState(true);
+  const [audio, setAudio] = useState(false);
   const [video, setVideo] = useState({ width: 300, height: 300 });
 
-  const pc = new RTCPeerConnection(servers);
   let localStream = null;
   let remoteStream = null;
 
-  const getVideo = async () => {
+  const getVideo = async (event) => {
     //roomid
-    let id = "ddd";
+    let id = "b71cd8";
     let data = null;
 
     getDataList(id);
 
     getLocalStream();
 
-    getRemoteStream();
+    getRemoteStream(event);
   };
 
   // function getFirebase(data) {
@@ -75,7 +73,7 @@ const Meet = () => {
   // }
 
   async function getDataList(id) {
-    const dataList = await getDocs(collection(db, "meettingtest"));
+    const dataList = await getDocs(collection(db, "video"));
     dataList.forEach((result) => {
       result.data().roomId === id && setAudio(result.data().audio);
     });
@@ -87,6 +85,7 @@ const Meet = () => {
       audio,
     });
     myVideo_ref.current.srcObject = localStream;
+
     myVideo_ref.current.onloadedmetadata = () => {
       myVideo_ref.current.play();
     };
@@ -96,7 +95,7 @@ const Meet = () => {
     });
   }
 
-  async function getRemoteStream() {
+  async function getRemoteStream(e) {
     remoteStream = new MediaStream();
 
     yourVideo_ref.current.srcObject = remoteStream;
@@ -104,8 +103,9 @@ const Meet = () => {
     myVideo_ref.current.onloadedmetadata = () => {
       myVideo_ref.current.play();
     };
-    pc.ontrack = (event) => {
-      event.streams[0].getTracks((track) => {
+
+    pc.ontrack = (e) => {
+      e.streams[0].getTracks((track) => {
         remoteStream.addTrack(track);
       });
     };
@@ -117,11 +117,13 @@ const Meet = () => {
     // getting the data for this particular call
     //const callDoc = db.collection("meettingtest").doc(callId);
 
-    const callDoc = collection(db, "meettingtest");
+    const callDoc = doc(db, "video", "msrh8VNsHJypDkS8boU2");
 
-    const answerCandidates = doc(db, "meettingtest", "answerCandidates");
-    const offerCandidates = doc(db, "meettingtest", "offerCandidates");
+    const answerCandidatesRef = doc(db, "video", "answerCandidates");
+    const offerCandidatesRef = doc(db, "video", "offerCandidates");
 
+    const answerCandidates = await getDoc(answerCandidatesRef);
+    const offerCandidates = await getDoc(offerCandidatesRef);
     //const answerCandidates = callDoc.collection("answerCandidates");
     // const offerCandidates = callDoc.collection("offerCandidates");
 
@@ -132,12 +134,10 @@ const Meet = () => {
 
     // const callData = (await callDoc.get()).data();
     const callDataList = await getDoc(callDoc);
-    console.log(callDataList);
     const callData = callDataList.data();
-
     // setting the remote video with offerDescription
-    const offerDescription = callData.offer;
-    console.log(offerDescription);
+    // const offerDescription = callData.offer;
+    const offerDescription = callData;
     await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
 
     // setting the local video as the answer
@@ -169,6 +169,7 @@ const Meet = () => {
 
   return (
     <div>
+      {/* <button onClick={(event) => getVideo(event)}>start!</button> */}
       <input ref={call_ref} />
       <video ref={myVideo_ref}></video>
       <video ref={yourVideo_ref}></video>
