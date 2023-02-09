@@ -1,81 +1,38 @@
 import { async } from "@firebase/util";
 import { useEffect } from "react";
 import { useRef } from "react";
-import { servers } from "./server/firebase";
-import { db } from "./server/firebase";
+import { db, pc } from "./server/firebase";
 import { collection, getDocs, doc, getDoc } from "firebase/firestore";
 import { useState } from "react";
+import { push, ref } from "firebase/database";
+import { database } from "./server/firebase";
 
 const Meet = () => {
   const myVideo_ref = useRef();
   const yourVideo_ref = useRef();
   const call_ref = useRef();
-  const [audio, setAudio] = useState(true);
+  const [audio, setAudio] = useState(false);
   const [video, setVideo] = useState({ width: 300, height: 300 });
+  const roomId = "237747";
+  const locate = ref(database, "meettest");
 
-  const pc = new RTCPeerConnection(servers);
   let localStream = null;
   let remoteStream = null;
 
-  const getVideo = async () => {
+  const getVideo = async (event) => {
     //roomid
-    let id = "ddd";
+    let id = "b71cd8";
     let data = null;
 
     getDataList(id);
 
     getLocalStream();
 
-    getRemoteStream();
+    getRemoteStream(event);
   };
 
-  // function getFirebase(data) {
-  //   setAudio(data.audio);
-  //   setVideo(data.video);
-  // }
-
-  // async function onClickEndBtn() {
-  //   // referencing firebase collections
-  //   const callDoc = db.collection("calls").doc();
-  //   const offerCandidates = callDoc.collection("offerCandidates");
-  //   const answerCandidiates = callDoc.collection("answerCandidates");
-  //   // setting the input value to the calldoc id
-  //   call_ref.current.value = callDoc.id;
-  //   // get candidiates for caller and save to db
-  //   pc.onicecandidate = (event) => {
-  //     event.candidate && offerCandidates.add(event.candidate.toJSON());
-  //   };
-  //   // create offer
-  //   const offerDescription = await pc.createOffer();
-  //   await pc.setLocalDescription(offerDescription);
-  //   // config for offer
-  //   const offer = {
-  //     sdp: offerDescription.sdp,
-  //     type: offerDescription.type,
-  //   };
-  //   await callDoc.set({ offer });
-  //   // listening to changes in firestore and update the streams accordingly
-  //   callDoc.onSnapshot((snapshot) => {
-  //     const data = snapshot.data();
-  //     if (!pc.currentRemoteDescription && data.answer) {
-  //       const answerDescription = new RTCSessionDescription(data.answer);
-  //       pc.setRemoteDescription(answerDescription);
-  //     }
-  //     // if answered add candidates to peer connection
-  //     answerCandidiates.onSnapshot((snapshot) => {
-  //       snapshot.docChanges().forEach((change) => {
-  //         if (change.type === "added") {
-  //           const candidate = new RTCIceCandidate(change.doc.data());
-  //           pc.addIceCandidate(candidate);
-  //         }
-  //       });
-  //     });
-  //   });
-  //   // hangupButton.disabled = false;
-  // }
-
   async function getDataList(id) {
-    const dataList = await getDocs(collection(db, "meettingtest"));
+    const dataList = await getDocs(collection(db, "video"));
     dataList.forEach((result) => {
       result.data().roomId === id && setAudio(result.data().audio);
     });
@@ -87,16 +44,35 @@ const Meet = () => {
       audio,
     });
     myVideo_ref.current.srcObject = localStream;
+
     myVideo_ref.current.onloadedmetadata = () => {
       myVideo_ref.current.play();
     };
+
+    pc.createOffer()
+      .then((offer) => pc.setLocalDescription(offer))
+      .then(() =>
+        sendSignalingMessage({
+          type: "video-offer",
+          sdp: pc.localDescription,
+        })
+      )
+      .then((msg) => handleOffer({ sdp: pc.localDescription }))
+      .catch((err) => {
+        console.log(err);
+      });
 
     localStream.getTracks().forEach((track) => {
       pc.addTrack(track, localStream);
     });
   }
 
-  async function getRemoteStream() {
+  function sendSignalingMessage(msg) {
+    const msgJSON = JSON.stringify(msg);
+    push(locate, msgJSON);
+  }
+
+  async function getRemoteStream(e) {
     remoteStream = new MediaStream();
 
     yourVideo_ref.current.srcObject = remoteStream;
@@ -104,71 +80,53 @@ const Meet = () => {
     myVideo_ref.current.onloadedmetadata = () => {
       myVideo_ref.current.play();
     };
-    pc.ontrack = (event) => {
-      event.streams[0].getTracks((track) => {
+
+    pc.ontrack = (e) => {
+      e.streams[0].getTracks((track) => {
         remoteStream.addTrack(track);
       });
     };
   }
 
-  const addPeople = async () => {
-    //const callId = callInput.value;
-    const callId = "dddd";
-    // getting the data for this particular call
-    //const callDoc = db.collection("meettingtest").doc(callId);
-
-    const callDoc = collection(db, "meettingtest");
-
-    const answerCandidates = doc(db, "meettingtest", "answerCandidates");
-    const offerCandidates = doc(db, "meettingtest", "offerCandidates");
-
-    //const answerCandidates = callDoc.collection("answerCandidates");
-    // const offerCandidates = callDoc.collection("offerCandidates");
-
-    // here we listen to the changes and add it to the answerCandidates
-    pc.onicecandidate = (event) => {
-      event.candidate && answerCandidates.add(event.candidate.toJSON());
-    };
-
-    // const callData = (await callDoc.get()).data();
-    const callDataList = await getDoc(callDoc);
-    console.log(callDataList);
-    const callData = callDataList.data();
-
-    // setting the remote video with offerDescription
-    const offerDescription = callData.offer;
-    console.log(offerDescription);
-    await pc.setRemoteDescription(new RTCSessionDescription(offerDescription));
-
-    // setting the local video as the answer
-    const answerDescription = await pc.createAnswer();
-    await pc.setLocalDescription(new RTCSessionDescription(answerDescription));
-
-    // answer config
-    const answer = {
-      type: answerDescription.type,
-      sdp: answerDescription.sdp,
-    };
-
-    await callDoc.update({ answer });
-
-    offerCandidates.onSnapshot((snapshot) => {
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === "added") {
-          let data = change.doc.data();
-          pc.addIceCandidate(new RTCIceCandidate(data));
-        }
+  function getAnswer() {
+    pc.createAnswer()
+      .then((answer) => pc.setLocalDescription(answer))
+      .then(() => {
+        sendSignalingMessage({
+          type: "video-answer",
+          sdp: pc.remoteDescription,
+        });
       });
-    });
-  };
+  }
+  function handleOffer(msg) {
+    const desc = new RTCSessionDescription(msg.sdp);
+    pc.setRemoteDescription(desc)
+      .then(() => navigator.mediaDevices.getUserMedia({ audio, video }))
+      .then((stream) => {
+        myVideo_ref.current.srcObject = stream;
+        return pc.addStream(stream);
+      })
+      .then(() => pc.createAnswer())
+      .then((answer) => pc.setLocalDescription(answer))
+      .then(() => {
+        sendSignalingMessage({
+          type: "video-remoteDescription",
+          sdp: pc.remoteDescription,
+        });
+      })
+      .catch((err) => console.log(err));
+  }
 
   useEffect(() => {
     getVideo();
-    addPeople();
+    getAnswer();
+    //handleOffer();
+    //addPeople();
   }, []);
 
   return (
     <div>
+      {/* <button onClick={(event) => getVideo(event)}>start!</button> */}
       <input ref={call_ref} />
       <video ref={myVideo_ref}></video>
       <video ref={yourVideo_ref}></video>
