@@ -16,8 +16,54 @@ const Meet = () => {
   const roomId = "237747";
   const locate = ref(database, "meettest");
 
+  pc.onicecandidate = handleICECandidateEvent;
+  pc.onnegotiationneeded = handleNegotiationNeededEvent;
+  pc.ontrack = handleTrackEvent;
+
   let localStream = null;
   let remoteStream = null;
+  async function handleNegotiationNeededEvent() {
+    try {
+      const offer = await pc.createOffer();
+
+      // If the connection hasn't yet achieved the "stable" state,
+      // return to the caller. Another negotiationneeded event
+      // will be fired when the state stabilizes.
+
+      if (pc.signalingState !== "stable") {
+        return;
+      }
+
+      // Establish the offer as the local peer's current
+      // description.
+
+      await pc.setLocalDescription(offer);
+
+      // Send the offer to the remote peer.
+      sendSignalingMessage({
+        name: "susu",
+        target: "0gun",
+        type: "video-offer",
+        sdp: pc.localDescription,
+      });
+    } catch (err) {
+      reportError(err);
+    }
+  }
+
+  function handleTrackEvent(event) {
+    yourVideo_ref.current.srcObject = event.streams[0];
+  }
+
+  function handleICECandidateEvent(event) {
+    if (event.candidate) {
+      sendSignalingMessage({
+        type: "new-ice-candidate",
+        target: "0gun",
+        candidate: event.candidate,
+      });
+    }
+  }
 
   const getVideo = async (event) => {
     //roomid
@@ -53,11 +99,13 @@ const Meet = () => {
       .then((offer) => pc.setLocalDescription(offer))
       .then(() =>
         sendSignalingMessage({
+          name: "susu",
+          target: "0gun",
           type: "video-offer",
           sdp: pc.localDescription,
         })
       )
-      .then((msg) => handleOffer({ sdp: pc.localDescription }))
+      .then(() => handleOffer({ sdp: pc.localDescription }))
       .catch((err) => {
         console.log(err);
       });
@@ -103,25 +151,39 @@ const Meet = () => {
     pc.setRemoteDescription(desc)
       .then(() => navigator.mediaDevices.getUserMedia({ audio, video }))
       .then((stream) => {
-        myVideo_ref.current.srcObject = stream;
-        return pc.addStream(stream);
+        localStream = stream;
+        myVideo_ref.current.srcObject = localStream;
+
+        //pc.addStream(stream);
+
+        localStream
+          .getTracks()
+          .forEach((track) => pc.addTrack(track, localStream));
       })
       .then(() => pc.createAnswer())
       .then((answer) => pc.setLocalDescription(answer))
       .then(() => {
         sendSignalingMessage({
+          name: "susu",
+          target: "0gun",
           type: "video-remoteDescription",
-          sdp: pc.remoteDescription,
+          sdp: pc.localDescription,
         });
       })
       .catch((err) => console.log(err));
   }
-
+  function handleICECandidateEvent(event) {
+    if (event.candidate) {
+      sendSignalingMessage({
+        type: "new-ice-candidate",
+        target: "0gun",
+        candidate: event.candidate,
+      });
+    }
+  }
   useEffect(() => {
     getVideo();
     getAnswer();
-    //handleOffer();
-    //addPeople();
   }, []);
 
   return (
