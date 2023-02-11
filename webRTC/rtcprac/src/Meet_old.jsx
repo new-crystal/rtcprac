@@ -4,8 +4,17 @@ import { useRef } from "react";
 import { db, pc } from "./server/firebase";
 import { collection, getDocs, doc, getDoc, addDoc } from "firebase/firestore";
 import { useState } from "react";
-import { push, ref, set, onValue, getDatabase } from "firebase/database";
+import {
+  push,
+  ref,
+  set,
+  onValue,
+  getDatabase,
+  child,
+  get,
+} from "firebase/database";
 import { database } from "./server/firebase";
+import { cleanup } from "@testing-library/react";
 
 const MeetTest = () => {
   const myVideo_ref = useRef();
@@ -14,6 +23,8 @@ const MeetTest = () => {
   const [audio, setAudio] = useState(false);
   const [video, setVideo] = useState({ width: 300, height: 300 });
   const [logined, setLogined] = useState(false);
+  const [dataList, setDataList] = useState(null);
+  const room = "1234a";
 
   const locate = ref(database, "offer");
   const getOffer = getDatabase();
@@ -67,7 +78,7 @@ const MeetTest = () => {
   }
 
   //peer A
-  //내 비디오 띄우기 + createOffer
+  //내 비디오 띄우기
   async function getLocalStream(data) {
     localStream = await navigator.mediaDevices.getUserMedia({
       video,
@@ -78,63 +89,55 @@ const MeetTest = () => {
     localStream.getTracks().forEach((track) => {
       pc.addTrack(track, localStream);
     });
-    pc.createOffer()
-      .then((offer) => pc.setLocalDescription(offer))
-      .then(() =>
-        sendSignalingMessage({
-          data,
-          type: "offer",
-          sdp: pc.localDescription,
-        })
-      )
-      .then(() => handleOffer({ sdp: pc.localDescription, data }))
-      .catch((err) => {
-        console.log(err);
-      });
+    createOffering(data);
   }
 
-  //firebase로 내보내기
-  async function sendSignalingMessage(msg) {
-    const msgJSON = JSON.stringify(msg.sdp);
-    const getOfferLocate = ref(getOffer, `offer/${msg.data}`);
-    if (msg.type === "offer") {
-      offerMsg = msg;
-    } else if (msg.type === "answer") {
-      answerMsg = msg;
-    }
-    push(getOfferLocate, { type: msg.type, msg: msgJSON }).catch((err) =>
-      console.log(err)
-    );
+  //peerA
+  //createOffer
+  async function createOffering(data) {
+    await pc.createOffer().then(async (offer) => {
+      console.log(offer);
+      await pc.setLocalDescription(offer);
+    });
+    sendSignalingMessage({
+      data,
+      type: "offer",
+      sdp: pc.localDescription,
+    });
   }
 
   //peer B
   //createAnswer
   async function handleOffer(msg) {
-    // let offer = null;
-    // let dataList = null;
-    // const getOfferLocate = ref(getOffer, `offer/${msg.data}`);
-    // onValue(getOfferLocate, async (data) => {
-    //   dataList = await data.val();
-    //   const jsonList = Object.values(dataList);
-    //   const notJsonData = jsonList.map((data) => JSON.parse(data.msg));
-    //   const offer = notJsonData.find((data) => data.type === "offer");
-    // });
-    console.log(offerMsg);
-    await pc
-      .setRemoteDescription(offerMsg.sdp)
-      .then(() => pc.createAnswer())
-      .then((answer) => pc.setLocalDescription(answer))
-      .then(() => {
-        sendSignalingMessage({
-          data: msg.data,
-          type: "answer",
-          sdp: pc.localDescription,
-        });
-      })
-      .then(() => getAnswer({ sdp: pc.localDescription, data: msg.data }))
-      .catch((err) => console.log(err));
+    let dataList = null;
+    const getOfferLocate = ref(getOffer, `offer/${msg.data}`);
+    onValue(getOfferLocate, async (data) => {
+      dataList = await data.val();
+      const jsonList = Object.values(dataList);
+      const notJsonData = jsonList.map((data) => JSON.parse(data.msg));
+      const offerData = notJsonData.find((data) => data.type === "offer");
+      pc.setRemoteDescription(new RTCSessionDescription(offerData)).then(
+        createAnswered()
+      );
+    });
   }
 
+  //peer B
+  //createAnswer
+  async function createAnswered() {
+    console.log(dataList);
+    pc.createAnswer().then(
+      async (answer) => await pc.setLocalDescription(answer)
+    );
+    sendSignalingMessage({
+      data: room,
+      type: "answer",
+      sdp: pc.localDescription,
+    });
+  }
+
+  //peerA
+  //remoteDEscription()
   async function getAnswer(m) {
     const getOfferLocate = ref(getOffer, `offer/${m.data}`);
     onValue(getOfferLocate, async (data) => {
@@ -143,8 +146,26 @@ const MeetTest = () => {
       const notJsonData = jsonList.map((data) => JSON.parse(data.msg));
       const answer = notJsonData.find((data) => data.type === "answer");
       console.log(answer);
+      await pc.setRemoteDescription(new RTCSessionDescription(answer));
     });
-    await pc.setRemoteDescription(answerMsg.sdp);
+  }
+  //firebase로 내보내기
+  async function sendSignalingMessage(msg) {
+    console.log(msg);
+    const msgJSON = JSON.stringify(msg.sdp);
+    const getOfferLocate = ref(getOffer, `offer/${msg.data}`);
+    if (msg.type === "offer" && msg.sdp) {
+      offerMsg = msg;
+      console.log("offer 성공!");
+      handleOffer({ data: msg.data });
+    } else if (msg.type === "answer") {
+      answerMsg = msg;
+      getAnswer({ data: room });
+      console.log("answer 성공!");
+    }
+    push(getOfferLocate, { type: msg.type, msg: msgJSON }).catch((err) =>
+      console.log(err)
+    );
   }
 
   return (
