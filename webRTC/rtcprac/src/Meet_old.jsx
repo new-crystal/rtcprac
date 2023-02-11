@@ -7,7 +7,7 @@ import { useState } from "react";
 import { push, ref, set, onValue, getDatabase } from "firebase/database";
 import { database } from "./server/firebase";
 
-const Meet = () => {
+const MeetTest = () => {
   const myVideo_ref = useRef();
   const yourVideo_ref = useRef();
   const call_ref = useRef();
@@ -192,4 +192,4 @@ const Meet = () => {
   );
 };
 
-export default Meet;
+export default MeetTest;

@@ -1,5 +1,5 @@
 import "./App.css";
-import Meet from "./Meet_old";
+import Meet from "./Meet";
 import Stream from "./Stream";
 import { database } from "./server/firebase";
 import { push, ref, set } from "firebase/database";
