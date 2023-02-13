@@ -2,7 +2,14 @@ import { async } from "@firebase/util";
 import { useEffect } from "react";
 import { useRef } from "react";
 import { db, pc } from "./server/firebase";
-import { collection, getDocs, doc, getDoc, addDoc } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  doc,
+  getDoc,
+  addDoc,
+  setDoc,
+} from "firebase/firestore";
 import { useState } from "react";
 import {
   push,
@@ -74,6 +81,7 @@ const MeetTest = () => {
   // }
 
   function handleTrackEvent(event) {
+    console.log(event.streams);
     yourVideo_ref.current.srcObject = event.streams[0];
   }
 
@@ -86,6 +94,7 @@ const MeetTest = () => {
     });
     myVideo_ref.current.srcObject = localStream;
 
+    console.log(localStream);
     localStream.getTracks().forEach((track) => {
       pc.addTrack(track, localStream);
     });
@@ -96,7 +105,6 @@ const MeetTest = () => {
   //createOffer
   async function createOffering(data) {
     await pc.createOffer().then(async (offer) => {
-      console.log(offer);
       await pc.setLocalDescription(offer);
     });
     sendSignalingMessage({
@@ -111,21 +119,30 @@ const MeetTest = () => {
   async function handleOffer(msg) {
     let dataList = null;
     const getOfferLocate = ref(getOffer, `offer/${msg.data}`);
-    onValue(getOfferLocate, async (data) => {
-      dataList = await data.val();
-      const jsonList = Object.values(dataList);
-      const notJsonData = jsonList.map((data) => JSON.parse(data.msg));
-      const offerData = notJsonData.find((data) => data.type === "offer");
-      pc.setRemoteDescription(new RTCSessionDescription(offerData)).then(
-        createAnswered()
-      );
+    const meetSnapshot = await getDocs(collection(db, `offer`));
+    meetSnapshot.forEach(async (doc) => {
+      if (doc.data().data === msg.data && doc.data().type === "offer") {
+        dataList = doc.data();
+      }
     });
+
+    pc.setRemoteDescription(
+      new RTCSessionDescription(JSON.parse(dataList.msg))
+    ).then(createAnswered());
+    // onValue(getOfferLocate, async (data) => {
+    //   dataList = await data.val();
+    //   const jsonList = Object.values(dataList);
+    //   const notJsonData = jsonList.map((data) => JSON.parse(data.msg));
+    //   const offerData = notJsonData.find((data) => data.type === "offer");
+    //   pc.setRemoteDescription(new RTCSessionDescription(offerData)).then(
+    //     createAnswered()
+    //   );
+    // });
   }
 
   //peer B
   //createAnswer
   async function createAnswered() {
-    console.log(dataList);
     pc.createAnswer().then(
       async (answer) => await pc.setLocalDescription(answer)
     );
@@ -139,33 +156,37 @@ const MeetTest = () => {
   //peerA
   //remoteDEscription()
   async function getAnswer(m) {
+    let dataList = null;
     const getOfferLocate = ref(getOffer, `offer/${m.data}`);
-    onValue(getOfferLocate, async (data) => {
-      const dataList = await data.val();
-      const jsonList = Object.values(dataList);
-      const notJsonData = jsonList.map((data) => JSON.parse(data.msg));
-      const answer = notJsonData.find((data) => data.type === "answer");
-      console.log(answer);
-      await pc.setRemoteDescription(new RTCSessionDescription(answer));
+    const meetSnapshot = await getDocs(collection(db, `offer`));
+    meetSnapshot.forEach(async (doc) => {
+      if (doc.data().data === m.data && doc.data().type === "answer") {
+        dataList = doc.data();
+      }
     });
+    pc.setRemoteDescription(
+      new RTCSessionDescription(JSON.parse(dataList.msg))
+    );
   }
   //firebase로 내보내기
   async function sendSignalingMessage(msg) {
-    console.log(msg);
     const msgJSON = JSON.stringify(msg.sdp);
     const getOfferLocate = ref(getOffer, `offer/${msg.data}`);
     if (msg.type === "offer" && msg.sdp) {
       offerMsg = msg;
       console.log("offer 성공!");
-      handleOffer({ data: msg.data });
+      setTimeout(() => {
+        handleOffer({ data: msg.data });
+      }, 500);
     } else if (msg.type === "answer") {
       answerMsg = msg;
-      getAnswer({ data: room });
+      setTimeout(() => {
+        getAnswer({ data: msg.data });
+      }, 500);
       console.log("answer 성공!");
     }
-    push(getOfferLocate, { type: msg.type, msg: msgJSON }).catch((err) =>
-      console.log(err)
-    );
+    const meetRef = doc(db, "offer", `${msg.data}`);
+    setDoc(meetRef, { type: msg.type, msg: msgJSON, data: msg.data });
   }
 
   return (
