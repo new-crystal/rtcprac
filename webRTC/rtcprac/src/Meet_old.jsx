@@ -22,6 +22,7 @@ import {
 } from "firebase/database";
 import { database } from "./server/firebase";
 import { cleanup } from "@testing-library/react";
+import { nanoid } from "nanoid";
 
 const MeetTest = () => {
   const myVideo_ref = useRef();
@@ -31,7 +32,7 @@ const MeetTest = () => {
   const [video, setVideo] = useState({ width: 300, height: 300 });
   const [logined, setLogined] = useState(false);
   const [dataList, setDataList] = useState(null);
-  const room = "1234a";
+  const userId = nanoid();
 
   const locate = ref(database, "offer");
   const getOffer = getDatabase();
@@ -41,7 +42,7 @@ const MeetTest = () => {
   let answerMsg = null;
 
   // pc.onnegotiationneeded = handleNegotiationNeededEvent;
-  pc.ontrack = handleTrackEvent;
+  // pc.ontrack = handleTrackEvent;
 
   let localStream = null;
   let remoteStream = null;
@@ -80,74 +81,110 @@ const MeetTest = () => {
   //   }
   // }
 
-  function handleTrackEvent(event) {
-    console.log(event.streams);
-    yourVideo_ref.current.srcObject = event.streams[0];
+  //peerB 화면 띄우기
+  function handleTrackEvent() {
+    remoteStream = new MediaStream();
+
+    yourVideo_ref.current.srcObject = remoteStream;
+    yourVideo_ref.current.onloadedmetadata = () => {
+      yourVideo_ref.play();
+    };
+
+    pc.ontrack = (event) => {
+      //console.log(event);
+      event.streams[0].getTracks().forEach((track) => {
+        //console.log(track);
+        remoteStream.addTrack(track);
+      });
+    };
+
+    // console.log(remoteStream);
   }
 
   //peer A
   //내 비디오 띄우기
   async function getLocalStream(data) {
-    localStream = await navigator.mediaDevices.getUserMedia({
-      video,
-      audio,
-    });
-    myVideo_ref.current.srcObject = localStream;
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({
+        video,
+        audio,
+      });
+      myVideo_ref.current.srcObject = localStream;
 
-    console.log(localStream);
-    localStream.getTracks().forEach((track) => {
-      pc.addTrack(track, localStream);
-    });
-    createOffering(data);
+      localStream.getTracks().forEach((track) => {
+        pc.addTrack(track, localStream);
+      });
+
+      setTimeout(() => {
+        createOffering(data);
+        handleTrackEvent();
+        findUser(data);
+      }, 500);
+    } catch (err) {
+      console.log(err);
+    }
+  }
+  //User찾기
+  async function findUser(data) {
+    const meetSnapshot = await getDocs(collection(db, "offer"));
+    try {
+      meetSnapshot.forEach(async (doc) => {
+        if (doc.data().data !== data.data) {
+          createOffering(data);
+        } else {
+          handleOffer(data);
+        }
+      });
+    } catch (err) {
+      console.log(err);
+    }
   }
 
   //peerA
   //createOffer
   async function createOffering(data) {
-    await pc.createOffer().then(async (offer) => {
+    try {
+      const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-    });
-    sendSignalingMessage({
-      data,
-      type: "offer",
-      sdp: pc.localDescription,
-    });
+      sendSignalingMessage({
+        data,
+        type: "offer",
+        sdp: pc.localDescription,
+      });
+    } catch (err) {
+      console.log(err);
+    }
   }
 
   //peer B
   //createAnswer
   async function handleOffer(msg) {
     let dataList = null;
-    const getOfferLocate = ref(getOffer, `offer/${msg.data}`);
     const meetSnapshot = await getDocs(collection(db, `offer`));
     meetSnapshot.forEach(async (doc) => {
-      if (doc.data().data === msg.data && doc.data().type === "offer") {
+      if (
+        doc.data().data === msg.data &&
+        doc.data().type === "offer" &&
+        doc.data().userId !== userId
+      ) {
         dataList = doc.data();
       }
     });
-
-    pc.setRemoteDescription(
-      new RTCSessionDescription(JSON.parse(dataList.msg))
-    ).then(createAnswered());
-    // onValue(getOfferLocate, async (data) => {
-    //   dataList = await data.val();
-    //   const jsonList = Object.values(dataList);
-    //   const notJsonData = jsonList.map((data) => JSON.parse(data.msg));
-    //   const offerData = notJsonData.find((data) => data.type === "offer");
-    //   pc.setRemoteDescription(new RTCSessionDescription(offerData)).then(
-    //     createAnswered()
-    //   );
-    // });
+    if (dataList) {
+      pc.setRemoteDescription(
+        new RTCSessionDescription(JSON.parse(dataList.msg))
+      ).then(createAnswered(msg));
+    }
   }
 
   //peer B
   //createAnswer
-  async function createAnswered() {
+  async function createAnswered(msg) {
     pc.createAnswer().then(
       async (answer) => await pc.setLocalDescription(answer)
     );
     sendSignalingMessage({
-      data: room,
+      data: msg.data,
       type: "answer",
       sdp: pc.localDescription,
     });
@@ -157,36 +194,43 @@ const MeetTest = () => {
   //remoteDEscription()
   async function getAnswer(m) {
     let dataList = null;
-    const getOfferLocate = ref(getOffer, `offer/${m.data}`);
     const meetSnapshot = await getDocs(collection(db, `offer`));
     meetSnapshot.forEach(async (doc) => {
       if (doc.data().data === m.data && doc.data().type === "answer") {
         dataList = doc.data();
       }
     });
-    pc.setRemoteDescription(
-      new RTCSessionDescription(JSON.parse(dataList.msg))
-    );
+    try {
+      pc.setRemoteDescription(
+        new RTCSessionDescription(JSON.parse(dataList.msg))
+      );
+    } catch (err) {
+      console.log(err);
+    }
   }
   //firebase로 내보내기
   async function sendSignalingMessage(msg) {
     const msgJSON = JSON.stringify(msg.sdp);
-    const getOfferLocate = ref(getOffer, `offer/${msg.data}`);
-    if (msg.type === "offer" && msg.sdp) {
+    if (msg.sdp.type === "offer" && msg.sdp) {
       offerMsg = msg;
       console.log("offer 성공!");
       setTimeout(() => {
         handleOffer({ data: msg.data });
       }, 500);
-    } else if (msg.type === "answer") {
+    } else if (msg.sdp.type === "answer") {
       answerMsg = msg;
       setTimeout(() => {
         getAnswer({ data: msg.data });
       }, 500);
       console.log("answer 성공!");
     }
-    const meetRef = doc(db, "offer", `${msg.data}`);
-    setDoc(meetRef, { type: msg.type, msg: msgJSON, data: msg.data });
+    // const meetRef = doc(db, "offer", `${msg.data}`);
+    addDoc(collection(db, `offer`), {
+      type: msg.type,
+      msg: msgJSON,
+      data: msg.data,
+      userId,
+    });
   }
 
   return (
