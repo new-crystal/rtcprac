@@ -104,44 +104,56 @@ const MeetTest = () => {
   //peer A
   //내 비디오 띄우기
   async function getLocalStream(data) {
-    localStream = await navigator.mediaDevices.getUserMedia({
-      video,
-      audio,
-    });
-    myVideo_ref.current.srcObject = localStream;
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia({
+        video,
+        audio,
+      });
+      myVideo_ref.current.srcObject = localStream;
 
-    // console.log(localStream);
-    localStream.getTracks().forEach((track) => {
-      pc.addTrack(track, localStream);
-    });
+      localStream.getTracks().forEach((track) => {
+        pc.addTrack(track, localStream);
+      });
 
-    handleTrackEvent();
-    //createOffering(data);
-    findUser(data);
-  }
-
-  async function findUser(data) {
-    const meetSnapshot = await getDocs(collection(db, `offer`));
-    meetSnapshot.forEach((doc) => {
-      if (doc.data().data !== data.data) {
+      setTimeout(() => {
         createOffering(data);
-      } else {
-        handleOffer(data);
-      }
-    });
+        handleTrackEvent();
+        findUser(data);
+      }, 500);
+    } catch (err) {
+      console.log(err);
+    }
+  }
+  //User찾기
+  async function findUser(data) {
+    const meetSnapshot = await getDocs(collection(db, "offer"));
+    try {
+      meetSnapshot.forEach(async (doc) => {
+        if (doc.data().data !== data.data) {
+          createOffering(data);
+        } else {
+          handleOffer(data);
+        }
+      });
+    } catch (err) {
+      console.log(err);
+    }
   }
 
   //peerA
   //createOffer
   async function createOffering(data) {
-    await pc.createOffer().then(async (offer) => {
+    try {
+      const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-    });
-    sendSignalingMessage({
-      data,
-      type: "offer",
-      sdp: pc.localDescription,
-    });
+      sendSignalingMessage({
+        data,
+        type: "offer",
+        sdp: pc.localDescription,
+      });
+    } catch (err) {
+      console.log(err);
+    }
   }
 
   //peer B
@@ -188,14 +200,17 @@ const MeetTest = () => {
         dataList = doc.data();
       }
     });
-    pc.setRemoteDescription(
-      new RTCSessionDescription(JSON.parse(dataList.msg))
-    );
+    try {
+      pc.setRemoteDescription(
+        new RTCSessionDescription(JSON.parse(dataList.msg))
+      );
+    } catch (err) {
+      console.log(err);
+    }
   }
   //firebase로 내보내기
   async function sendSignalingMessage(msg) {
     const msgJSON = JSON.stringify(msg.sdp);
-
     if (msg.sdp.type === "offer" && msg.sdp) {
       offerMsg = msg;
       console.log("offer 성공!");
@@ -210,7 +225,7 @@ const MeetTest = () => {
       console.log("answer 성공!");
     }
     // const meetRef = doc(db, "offer", `${msg.data}`);
-    addDoc(collection(db, `offer/`), {
+    addDoc(collection(db, `offer`), {
       type: msg.type,
       msg: msgJSON,
       data: msg.data,
