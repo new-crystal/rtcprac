@@ -28,7 +28,7 @@ const MeetTest = () => {
     if (create !== null) {
       getUserVideo();
     }
-  }, [create, roomId]);
+  }, [create, roomId, webcamActive]);
 
   const onClickCreateBtn = async () => {
     setLogined(true);
@@ -36,9 +36,6 @@ const MeetTest = () => {
     const callId = nanoid();
     setRoomId(callId);
     console.log(callId);
-    // setTimeout(() => {
-    //   getUserVideo();
-    // }, 500);
   };
 
   const onClickJoinBtn = async () => {
@@ -46,11 +43,8 @@ const MeetTest = () => {
     setCreate(false);
     const callId = await call_ref.current.value;
     setRoomId(callId);
-    // setTimeout(() => {
-    //   getUserVideo();
-    // }, 500);
   };
-  //peerA
+  //peerA, B
   //getUserMedia
   const getUserVideo = async () => {
     const localStream = await navigator.mediaDevices.getUserMedia({
@@ -65,14 +59,17 @@ const MeetTest = () => {
 
     pc.ontrack = (event) => {
       event.streams[0].getTracks().forEach((track) => {
+        console.log(track);
         remoteStream.addTrack(track);
       });
     };
 
     myVideo_ref.current.srcObject = localStream;
     yourVideo_ref.current.srcObject = remoteStream;
+    console.log(remoteStream);
     setWebcamActive(true);
 
+    console.log(create);
     if (create === true) {
       createOffer();
     } else if (create === false) {
@@ -82,7 +79,7 @@ const MeetTest = () => {
 
   //peerA createOffer
   const createOffer = async () => {
-    const callDoc = doc(db, "calls", "call");
+    const callDoc = doc(db, "calls", `${roomId}`);
 
     setRoomId(callDoc.id);
 
@@ -90,30 +87,66 @@ const MeetTest = () => {
       event.candidate &&
         addDoc(collection(db, "offerCandidates"), event.candidate.toJSON());
     };
+    try {
+      const offerDescription = await pc.createOffer();
+      await pc.setLocalDescription(offerDescription);
 
-    const offerDescription = await pc.createOffer();
-    await pc.setLocalDescription(offerDescription);
+      const offer = {
+        sdp: offerDescription.sdp,
+        type: offerDescription.type,
+      };
 
-    const offer = {
-      sdp: offerDescription.sdp,
-      type: offerDescription.type,
-    };
+      await setDoc(callDoc, { offer });
+    } catch (err) {
+      console.log(err);
+    }
+    try {
+      const qc = query(collection(db, "calls"));
+      onSnapshot(qc, (doc) => {
+        doc.forEach((snapshot) => {
+          const data = snapshot.data();
+          if (!pc.currentRemoteDescription && data?.answer) {
+            const answerDescription = new RTCSessionDescription(data.answer);
+            console.log(answerDescription);
+            pc.setRemoteDescription(answerDescription);
 
-    await setDoc(callDoc, { offer });
-
-    const q = query(collection(db, "answerCandidates"));
-    onSnapshot(q, (snapshot) => {
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === "added") {
-          console.log(change.doc.data());
-          const data = change.doc.data();
-          const candidate = new RTCIceCandidate(data);
-          pc.addIceCandidate(candidate);
-        }
+            const q = query(collection(db, "answerCandidates"));
+            onSnapshot(q, (snapshot) => {
+              snapshot.docChanges().forEach((change) => {
+                if (change.type === "added") {
+                  // console.log(change.doc.data());
+                  const data = change.doc.data();
+                  const candidate = new RTCIceCandidate(data);
+                  pc.addIceCandidate(candidate);
+                }
+              });
+            });
+          }
+        });
       });
-    });
+    } catch (err) {
+      console.log(err);
+    }
+    // try {
+    //   const q = query(collection(db, "answerCandidates"));
+    //   onSnapshot(q, (snapshot) => {
+    //     snapshot.docChanges().forEach((change) => {
+    //       if (change.type === "added") {
+    //         // console.log(change.doc.data());
+    //         const data = change.doc.data();
+    //         const candidate = new RTCIceCandidate(data);
+    //         console.log(candidate);
+    //         pc.addIceCandidate(candidate);
+    //       }
+    //     });
+    //   });
+    // } catch (err) {
+    //   console.log(err);
+    // }
   };
 
+  //peer B
+  //createAnswer()
   const remoteDes = async () => {
     const callDoc = doc(db, "calls", "call");
 
@@ -142,8 +175,7 @@ const MeetTest = () => {
     onSnapshot(q, (snapshot) => {
       snapshot.docChanges().forEach((change) => {
         if (change.type === "added") {
-          console.log(change.doc.data());
-          let data = change.doc.data();
+          const data = change.doc.data();
           pc.addIceCandidate(new RTCIceCandidate(data));
         }
       });
@@ -167,7 +199,7 @@ const MeetTest = () => {
             style={{
               width: "300px",
               height: "300px",
-              backgroundColor: "blue",
+              backgroundColor: "lavender",
             }}
             ref={yourVideo_ref}
           ></video>
