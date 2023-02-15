@@ -259,6 +259,7 @@ const MeetTest = () => {
       ) : (
         <div>
           <h1>Join!!</h1>
+          <button>create</button>
           <input ref={call_ref} />
           <button onClick={onClickJoinBtn}>join</button>
         </div>
